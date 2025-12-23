@@ -9,28 +9,11 @@ local function split_string(s, delimiter)
     return res
 end
 
---- Create a flat list of all files in a directory
-local function scandir(directory)
-    local command = "ls " .. directory .. " -A1 --color=never"
-    if not vim.fn.has("win32") then
-        command = "dir " .. directory .. " /b"
-    end
-    local fileList = {}
-
-    local cmdout = vim.fn.system(command)
-    local files = split_string(cmdout, "\n")
-
-    for _, fileName in ipairs(files) do
-        table.insert(fileList, fileName)
-    end
-
-    return fileList
-end
-
 local function find_justfile()
-    local files = scandir(vim.fn.getcwd())
-    for _, f in ipairs(files) do
-        if string.match(f, "^%.?[Jj][Uu][Ss][Tt][Ff][Ii][Ll][Ee]$") then return f end
+    for name, type in vim.fs.dir(".") do
+        if type == "file" and string.match(name, "^%.?[Jj][Uu][Ss][Tt][Ff][Ii][Ll][Ee]$") then
+            return name
+        end
     end
 end
 
