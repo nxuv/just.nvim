@@ -39,6 +39,7 @@ local config = {
     copen_on_error = true,
     copen_on_run = true,
     copen_on_any = false,
+    autoscroll_qf = true,
     register_commands = true,
     notify = vim.notify,
     on_done_callbacks = {},
@@ -214,6 +215,9 @@ local function task_runner(task_name)
 
     if should_open_qf then vim.cmd("wincmd p") end
 
+    local qfid  = vim.fn.getqflist({winid=0}).winid
+    local qfbuf = vim.api.nvim_win_get_buf(qfid)
+
     local start_time = os.clock()
 
     local append_qf_data = function(data)
@@ -235,6 +239,17 @@ local function task_runner(task_name)
         end
 
         if handle ~= nil then handle.message = data end
+
+        if config.autoscroll_qf then
+            local is_valid_qf = vim.api.nvim_win_is_valid(qfid) and vim.api.nvim_buf_is_valid(qfbuf)
+            if qfid ~= 0 and is_valid_qf then
+                local qflen = vim.api.nvim_buf_line_count(qfbuf)
+                vim.api.nvim_win_set_cursor(qfid, {qflen, 0})
+            else
+                qfid  = vim.fn.getqflist({winid=0}).winid
+                qfbuf = vim.api.nvim_win_get_buf(qfid)
+            end
+        end
     end
 
     local on_stdout_func = function(_, data)
@@ -400,10 +415,11 @@ end
 
 local function setup(opts)
     opts = table_to_dict(opts)
-    config.message_limit = get_any_option(opts, "fidget_message_limit", config.message_limit)
+    config.message_limit  = get_any_option(opts, "fidget_message_limit", config.message_limit)
     config.copen_on_error = get_bool_option(opts, "open_qf_on_error", config.copen_on_error)
     config.copen_on_run   = get_bool_option(opts, "open_qf_on_run", config.copen_on_run)
     config.copen_on_any   = get_bool_option(opts, "open_qf_on_any", config.copen_on_any)
+    config.autoscroll_qf  = get_bool_option(opts, "autoscroll_qf", config.autoscroll_qf)
     config.register_commands = get_bool_option(opts, "register_commands", config.register_commands)
     config.notify = get_any_option(opts, "notify", config.notify)
     if config.register_commands then
@@ -413,6 +429,16 @@ local function setup(opts)
         vim.api.nvim_create_user_command( "JustCreateTemplate", add_task_template, {nargs = 0, desc = "Creates template for just"})
     end
 end
+
+-- print(vim.inspect(vim.api.nvim_buf_line_count(0)))
+-- print(vim.fn.bufnr("%"))
+-- print(vim.fn.winnr())
+-- print(vim.fn.win_getid())
+-- 1000
+-- 0
+-- 1
+-- 444
+-- 2
 
 --- Runs vim.ui.select on list of tasks defined in justfile
 _M.run_task_select = run_task_select
