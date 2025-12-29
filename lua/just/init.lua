@@ -347,11 +347,11 @@ end
 local function add_task_template()
     local justfile = find_justfile()
     if justfile == nil then
-				justfile = string.format("%s/%s", vim.fn.getcwd(), "justfile")
-		else
+        justfile = string.format("%s/%s", vim.fn.getcwd(), "justfile")
+    else
         local opt = vim.fn.confirm("Justfile already exists in this project, create anyway?", "&Yes\n&No", 2)
         if opt ~= 1 then return end
-		end
+    end
 
     local f = io.open(justfile, "w")
     if f == nil then error("Unable to write '" .. justfile .. "'"); return end
