@@ -12,7 +12,10 @@ end
 local function find_justfile()
     for name, type in vim.fs.dir(".") do
         if type == "file" and string.match(name, "^%.?[Jj][Uu][Ss][Tt][Ff][Ii][Ll][Ee]$") then
-            return name
+            local justfile = string.format("%s/%s", vim.fn.getcwd(), name)
+            if vim.fn.filereadable(justfile) == 1 then
+                return justfile
+            end
         end
     end
 end
@@ -54,9 +57,9 @@ local function get_task_names(lang)
     if lang == nil then lang = "" end
 
     local arr = {}
-    local justfile = string.format("%s/%s", vim.fn.getcwd(), find_justfile())
+    local justfile = find_justfile()
 
-    if vim.fn.filereadable(justfile) == 1 then
+    if justfile ~= nil then
         local taskList = vim.fn.system(string.format("just -f %s --list", justfile))
         local taskArray = split_string(taskList, "\n")
 
@@ -105,9 +108,9 @@ end
 
 -- returns {args = string[], all = bool, fail = bool}
 local function get_task_args(task_name)
-    local justfile = string.format("%s/%s", vim.fn.getcwd(), find_justfile())
+    local justfile = find_justfile()
 
-    if vim.fn.filereadable(justfile) ~= 1 then
+    if justfile == nil then
         error("Justfile not found in project directory")
     end
 
@@ -172,9 +175,9 @@ local function task_runner(task_name)
 
     local args = arg_obj.args
 
-    local justfile = string.format("%s/%s", vim.fn.getcwd(), find_justfile())
+    local justfile = find_justfile()
 
-    if vim.fn.filereadable(justfile) ~= 1 then
+    if justfile == nil then
         error("Justfile not found in project directory")
         return
     end
@@ -342,11 +345,14 @@ local function run_task_cmd(args)
 end
 
 local function add_task_template()
-    local justfile = string.format("%s/%s", vim.fn.getcwd(), find_justfile())
-    if vim.fn.filereadable(justfile) == 1 then
+    local justfile = find_justfile()
+    if justfile == nil then
+				justfile = string.format("%s/%s", vim.fn.getcwd(), "justfile")
+		else
         local opt = vim.fn.confirm("Justfile already exists in this project, create anyway?", "&Yes\n&No", 2)
         if opt ~= 1 then return end
-    end
+		end
+
     local f = io.open(justfile, "w")
     if f == nil then error("Unable to write '" .. justfile .. "'"); return end
     f:write([=[#!/usr/bin/env -S just --justfile
@@ -409,7 +415,7 @@ local function setup(opts)
         vim.api.nvim_create_user_command("Just", run_task_cmd, {nargs = "?", bang = true, desc = "Run task"})
         vim.api.nvim_create_user_command("JustSelect", run_task_select, {nargs = 0, desc = "Open task picker"})
         vim.api.nvim_create_user_command("JustStop", stop_current_task, {nargs = 0, desc = "Stops current task"})
-        vim.api.nvim_create_user_command( "JustCreateTemplate", add_task_template, {nargs = 0, desc = "Creates template for just"})
+        vim.api.nvim_create_user_command("JustCreateTemplate", add_task_template, {nargs = 0, desc = "Creates template for just"})
     end
 end
 
