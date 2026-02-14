@@ -9,17 +9,6 @@ local function split_string(s, delimiter)
     return res
 end
 
-local function find_justfile()
-    for name, type in vim.fs.dir(".") do
-        if type == "file" and string.match(name, "^%.?[Jj][Uu][Ss][Tt][Ff][Ii][Ll][Ee]$") then
-            local justfile = string.format("%s/%s", vim.fn.getcwd(), name)
-            if vim.fn.filereadable(justfile) == 1 then
-                return justfile
-            end
-        end
-    end
-end
-
 local config = {
     message_limit = 32,
     copen_on_error = true,
@@ -47,9 +36,9 @@ local function popup(message, errlvl, title)
     config.notify(message, errlvl, {title = title})
 end
 
-local function info(message) popup(message, "info", "Just") end
-local function error(message) popup(message, "error", "Just") end
-local function warning(message) popup(message, "warning", "Just") end
+local function p_info(message) popup(message, "info", "Just") end
+local function p_error(message) popup(message, "error", "Just") end
+local function p_warning(message) popup(message, "warning", "Just") end
 -- local function inspect(val) print(vim.inspect(val)) end
 
 -- returns `string[] names`
@@ -57,23 +46,17 @@ local function get_task_names(lang)
     if lang == nil then lang = "" end
 
     local arr = {}
-    local justfile = find_justfile()
 
-    if justfile ~= nil then
-        local taskList = vim.fn.system(string.format("just -f %s --list", justfile))
-        local taskArray = split_string(taskList, "\n")
+    local taskList = vim.fn.system("just --list")
+    local taskArray = split_string(taskList, "\n")
 
-        if vim.startswith(taskArray[1], "error") then
-            error(taskList)
-            return {}
-        end
-
-        table.remove(taskArray, 1)
-        arr = taskArray
-    else
-        error("Justfile not found in project directory")
+    if vim.startswith(taskArray[1], "error") then
+        p_error(taskList)
         return {}
     end
+
+    table.remove(taskArray, 1)
+    arr = taskArray
 
     local tbl = {}
     local i = 0
@@ -108,13 +91,13 @@ end
 
 -- returns {args = string[], all = bool, fail = bool}
 local function get_task_args(task_name)
-    local justfile = find_justfile()
 
-    if justfile == nil then
-        error("Justfile not found in project directory")
+    local task_info = vim.fn.system("just -s " .. task_name)
+
+    if vim.startswith(task_info, "error") then
+        p_error(task_info)
+        return { args = {}, all = true, fail = true, abort = true }
     end
-
-    local task_info = vim.fn.system(string.format("just -f %s -s %s", justfile, task_name))
 
     if vim.startswith(task_info, "alias") then
         task_info = task_info:sub(task_info:find("\n") + 1)
@@ -129,7 +112,7 @@ local function get_task_args(task_name)
 
     table.remove(task_args, 1)
 
-    if #task_args == 0 then return {args = {}, all = true, fail = false} end
+    if #task_args == 0 then return {args = {}, all = true, fail = false, abort = false} end
 
     local out_args = {}
     local i = 0
@@ -147,7 +130,7 @@ local function get_task_args(task_name)
             end
 
             if string.format("%s", ask) == "" then
-                error("Must provide a valid argument")
+                p_error("Must provide a valid argument")
                 return {args = {}, all = false, fail = true}
             end
 
@@ -159,28 +142,25 @@ local function get_task_args(task_name)
         i = i + 1
     end
 
-    return {args = out_args, all = #out_args == #task_args, fail = false}
+    return {args = out_args, all = #out_args == #task_args, fail = false, abort = false}
 end
 
 local function task_runner(task_name)
-    if async_worker ~= nil then error("Task is already running"); return end
+    if async_worker ~= nil then p_error("Task is already running"); return end
     if task_name == nil then return end
 
     local arg_obj = get_task_args(task_name)
 
+    if arg_obj.abort then
+        return
+    end
+
     if arg_obj.all ~= true or arg_obj.fail then
-        error("Failed to get all arguments or not enough arguments supplied")
+        p_error("Failed to get all arguments or not enough arguments supplied")
         return
     end
 
     local args = arg_obj.args
-
-    local justfile = find_justfile()
-
-    if justfile == nil then
-        error("Justfile not found in project directory")
-        return
-    end
 
     local handle = nil
     if progress ~= nil then
@@ -192,7 +172,7 @@ local function task_runner(task_name)
         })
     end
 
-    local command = string.format("just -f %s -d . %s %s", justfile, task_name, table.concat(args, " "))
+    local command = string.format("just %s %s", task_name, table.concat(args, " "))
 
     local should_open_qf = (config.copen_on_run and task_name == "run") or config.copen_on_any
     if should_open_qf then vim.cmd("copen") end
@@ -246,7 +226,7 @@ local function task_runner(task_name)
         vim.schedule( function() return append_qf_data(data) end )
     end
 
-    local just_args = {"-f", justfile, "-d", ".", task_name}
+    local just_args = {task_name}
     for _, arg in ipairs(args) do
         table.insert(just_args, arg)
     end
@@ -307,17 +287,17 @@ end
 
 local function run_task_select()
     local tasks = get_task_names()
-    if #tasks == 0 then warning("There are no tasks defined in justfile"); return end
+    if #tasks == 0 then p_warning("There are no tasks defined in justfile"); return end
     task_select()
 end
 
 local function run_task_name(task_name)
     local tasks = get_task_names()
-    if #tasks == 0 then warning("There are no tasks defined in justfile"); return end
+    if #tasks == 0 then p_warning("There are no tasks defined in justfile"); return end
     local i = 0
     while i < #tasks do
         local opts = split_string(tasks[i + 1], "_")
-        -- info(vim.inspect(opts))
+        -- p_info(vim.inspect(opts))
         if #opts == 1 then
             if opts[1]:lower() == task_name then
                 task_runner(tasks[i + 1])
@@ -326,7 +306,7 @@ local function run_task_name(task_name)
         end
         i = i + 1
     end
-    warning("Could not find just task named '" .. task_name .. "'.")
+    p_error("Could not find just task named '" .. task_name .. "'.")
     -- run_task_select()
 end
 
@@ -345,16 +325,12 @@ local function run_task_cmd(args)
 end
 
 local function add_task_template()
-    local justfile = find_justfile()
-    if justfile == nil then
-        justfile = string.format("%s/%s", vim.fn.getcwd(), "justfile")
-    else
-        local opt = vim.fn.confirm("Justfile already exists in this project, create anyway?", "&Yes\n&No", 2)
-        if opt ~= 1 then return end
-    end
+    local justfile = string.format("%s/%s", vim.fn.getcwd(), "justfile")
+    local opt = vim.fn.confirm("Are you sure you want to create/override '" .. justfile .. "'?", "&Yes\n&No", 2)
+    if opt ~= 1 then return end
 
     local f = io.open(justfile, "w")
-    if f == nil then error("Unable to write '" .. justfile .. "'"); return end
+    if f == nil then p_error("Unable to write '" .. justfile .. "'"); return end
     f:write([=[#!/usr/bin/env -S just --justfile
 # just reference  : https://just.systems/man/en/
 
@@ -362,7 +338,7 @@ local function add_task_template()
     just --list
 ]=])
     f:close()
-    info("Template justfile created")
+    p_info("Template justfile created")
 end
 
 local function add_callback_on_done(callback)
